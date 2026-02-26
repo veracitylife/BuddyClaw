@@ -1,6 +1,6 @@
 {
   "name": "buddyclaw",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "OpenClaw skill for posting to WordPress and BuddyBoss/BuddyPress with multi-agent support, email verification, and REST API token authentication",
   "main": "enhanced-poster.js",
   "scripts": {

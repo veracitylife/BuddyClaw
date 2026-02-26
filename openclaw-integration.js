@@ -9,7 +9,7 @@ const AutonomousRecovery = require('./autonomous-recovery');
 /**
  * BuddyClaw OpenClaw Chat Integration
  * Processes chat commands and automates WordPress posting
- * Spun Web Technology - Version 0.0.2
+ * Spun Web Technology - Version 0.0.4
  */
 
 class OpenClawIntegration {
@@ -105,7 +105,7 @@ class OpenClawIntegration {
     
     // Command patterns
     const patterns = {
-      setup: /^(setup|configure|onboard)/i,
+      setup: /^(setup|configure|onboard|buddyclaw onboarding)/i,
       post: /^(post|publish|create|write)/i,
       bulk: /^(bulk|batch|multiple)/i,
       join: /^(join|group)/i,

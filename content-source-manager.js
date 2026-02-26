@@ -7,7 +7,7 @@ const AutonomousBuddyClaw = require('./autonomous-poster');
 /**
  * BuddyClaw Content Source Manager
  * Handles RSS feeds, file inputs, and bulk posting operations
- * Spun Web Technology - Version 0.0.2
+ * Spun Web Technology - Version 0.0.4
  */
 
 class ContentSourceManager {

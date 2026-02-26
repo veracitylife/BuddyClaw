@@ -5,7 +5,7 @@ const path = require('path');
 /**
  * BuddyClaw CAPTCHA Solver
  * Handles various CAPTCHA types for WordPress registration and login
- * Spun Web Technology - Version 0.0.2
+ * Spun Web Technology - Version 0.0.4
  */
 
 class CaptchaSolver {

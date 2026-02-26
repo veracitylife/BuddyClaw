@@ -7,7 +7,7 @@ const ConfigManager = require('./config-manager');
 /**
  * BuddyClaw Autonomous Content Generator and Poster
  * Integrates with AI models to generate content and post to WordPress
- * Spun Web Technology - Version 0.0.2
+ * Spun Web Technology - Version 0.0.4
  */
 
 class AutonomousBuddyClaw {
