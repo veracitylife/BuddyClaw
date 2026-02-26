@@ -123,15 +123,19 @@ class ContentSourceManager {
       
       console.log(`📰 Found ${feed.items.length} items in RSS feed`);
 
-      return feed.items.map(item => ({
-        topic: item.title,
-        content: item.content || item.contentSnippet || item.title,
-        title: item.title,
-        link: item.link,
-        pubDate: item.pubDate,
-        categories: item.categories || [],
-        source: 'rss'
-      }));
+      return feed.items.map(item => {
+        const baseContent = item.content || item.contentSnippet || item.title;
+        const content = options.link_back && item.link ? `${baseContent}\n\nSource: ${item.link}` : baseContent;
+        return {
+          topic: item.title,
+          content: content,
+          title: item.title,
+          link: item.link,
+          pubDate: item.pubDate,
+          categories: item.categories || [],
+          source: 'rss'
+        };
+      });
 
     } catch (error) {
       throw new Error(`RSS feed processing failed: ${error.message}`);

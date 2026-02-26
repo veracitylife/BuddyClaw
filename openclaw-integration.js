@@ -570,33 +570,186 @@ class OpenClawIntegration {
         }
         
       case 'content_prefs':
-        // Parse content preferences and complete setup
         const prefs = command.raw.trim().toLowerCase().split(/\s+/);
         const [auto_title, auto_excerpt, auto_tags, auto_featured_image] = prefs.map(p => p === 'yes');
-        
-        // Store the parsed preferences in the config object that will be saved
         return {
-          message: '🎉 Setup Complete!\n\n' +
-                  '✅ BuddyClaw has been successfully configured!\n\n' +
-                  '📋 Your configuration has been saved.\n\n' +
-                  '🚀 Ready to start posting!\n' +
-                  'Try: "Post Hello World! This is my first BuddyClaw post!"\n\n' +
-                  '📖 Full documentation: [Documentation.md](Documentation.md)\n' +
-                  '🏠 GitHub: https://github.com/veracitylife/BuddyClaw\n' +
-                  '💬 Support: https://github.com/veracitylife/BuddyClaw/issues',
+          message: '🧪 Setup complete. Would you like to create a test post now? (yes/no)\n\nThis will create a draft you can delete later.',
           data: { 
-            onboarding_complete: true,
-            next_step: 'complete',
+            next_step: 'test_offer',
             store_answer: 'content_prefs',
-            // Store the parsed preferences as the answer
-            parsed_prefs: {
-              auto_title,
-              auto_excerpt, 
-              auto_tags,
-              auto_featured_image
-            }
+            parsed_prefs: { auto_title, auto_excerpt, auto_tags, auto_featured_image }
           }
         };
+      
+      case 'test_offer':
+        {
+          const ans = command.raw.trim().toLowerCase();
+          if (ans.includes('y')) {
+            return {
+              message: 'Choose a test content source:\n1) Post from a URL\n2) Questionnaire (enter title/content)\n3) Bulk from RSS feed\n\nReply with 1, 2, or 3.',
+              data: { next_step: 'test_choice' }
+            };
+          } else if (ans.includes('n')) {
+            return {
+              message: '🎉 Setup Complete!\n\n✅ BuddyClaw is configured.\n📖 See Documentation.md for commands.',
+              data: { onboarding_complete: true, next_step: 'complete' }
+            };
+          } else {
+            return { message: 'Please answer yes or no.', data: { next_step: 'test_offer' } };
+          }
+        }
+      
+      case 'test_choice':
+        {
+          const ch = command.raw.trim();
+          if (ch === '1') {
+            return {
+              message: 'Enter the URL to use for the test post.',
+              data: { next_step: 'test_url', store_handler: (session) => { session.test = { type: 'url' }; } }
+            };
+          }
+          if (ch === '2') {
+            return {
+              message: 'Enter a title for the test post.',
+              data: { next_step: 'test_q_title', store_handler: (session) => { session.test = { type: 'questionnaire' }; } }
+            };
+          }
+          if (ch === '3') {
+            return {
+              message: 'How many items from the RSS feed should be posted?',
+              data: { next_step: 'test_rss_count', store_handler: (session) => { session.test = { type: 'rss' }; } }
+            };
+          }
+          return { message: 'Reply with 1, 2, or 3.', data: { next_step: 'test_choice' } };
+        }
+      
+      case 'test_url':
+        if (command.raw.trim()) {
+          return {
+            message: 'Fetching content and attempting to create a draft post...',
+            data: { next_step: 'test_execute', store_handler: (session, answer) => { session.test.url = answer; } }
+          };
+        }
+        return { message: 'Please enter a valid URL.', data: { next_step: 'test_url' } };
+      
+      case 'test_q_title':
+        if (command.raw.trim()) {
+          return {
+            message: 'Enter the content/body for the test post.',
+            data: { next_step: 'test_q_content', store_handler: (session, answer) => { session.test.title = answer; } }
+          };
+        }
+        return { message: 'Please enter a title.', data: { next_step: 'test_q_title' } };
+      
+      case 'test_q_content':
+        if (command.raw.trim()) {
+          return {
+            message: 'Choose status (draft/publish/private). Default is draft.',
+            data: { next_step: 'test_q_status', store_handler: (session, answer) => { session.test.content = answer; } }
+          };
+        }
+        return { message: 'Please enter content.', data: { next_step: 'test_q_content' } };
+      
+      case 'test_q_status':
+        {
+          const v = command.raw.trim().toLowerCase();
+          const status = v === 'publish' || v === 'private' ? v : 'draft';
+          return {
+            message: 'Target type? Reply with post/page/activity (default post).',
+            data: { next_step: 'test_q_target', store_handler: (session) => { session.test.status = status; } }
+          };
+        }
+      
+      case 'test_q_target':
+        {
+          const v = command.raw.trim().toLowerCase();
+          const target = ['post', 'page', 'activity'].includes(v) ? v : 'post';
+          return {
+            message: 'Attempting to create the test post...',
+            data: { next_step: 'test_execute', store_handler: (session) => { session.test.target = target; } }
+          };
+        }
+      
+      case 'test_rss_count':
+        {
+          const num = parseInt(command.raw.trim(), 10);
+          const cnt = isNaN(num) || num < 1 ? 1 : num;
+          return {
+            message: 'Enter the RSS feed URL.',
+            data: { next_step: 'test_rss_url', store_handler: (session) => { session.test.count = cnt; } }
+          };
+        }
+      
+      case 'test_rss_url':
+        if (command.raw.trim()) {
+          return {
+            message: 'Include a link back to the original source? (yes/no)',
+            data: { next_step: 'test_rss_linkback', store_handler: (session, answer) => { session.test.rss_url = answer; } }
+          };
+        }
+        return { message: 'Please enter a valid RSS URL.', data: { next_step: 'test_rss_url' } };
+      
+      case 'test_rss_linkback':
+        {
+          const v = command.raw.trim().toLowerCase();
+          const lb = v.includes('y');
+          return {
+            message: 'Processing RSS feed and attempting to create draft posts...',
+            data: { next_step: 'test_execute', store_handler: (session) => { session.test.link_back = lb; } }
+          };
+        }
+      
+      case 'test_execute':
+        {
+          try {
+            const EnhancedBuddyClaw = require('./enhanced-poster');
+            const buddy = new EnhancedBuddyClaw();
+            const buildAuth = (cfg) => {
+              const m = cfg.auth_method;
+              if (m === 'rest_api_token') return { wp_api_token: cfg.auth_credentials?.apiToken };
+              if (m === 'application_password') return { wp_username: cfg.auth_credentials?.username, wp_app_password: cfg.auth_credentials?.applicationPassword };
+              if (m === 'basic_auth') return { wp_username: cfg.auth_credentials?.username, wp_password: cfg.auth_credentials?.password };
+              if (m === 'multi_agent') return { agent_email: cfg.agent_email };
+              return {};
+            };
+            const cfg = session.config || {};
+            if (!cfg.site_url) cfg.site_url = cfg.site_url || cfg.siteUrl || cfg.wordpress?.siteUrl || '';
+            const t = session.test || {};
+            if (t.type === 'url') {
+              const axios = require('axios');
+              const res = await axios.get(t.url, { timeout: 10000 });
+              const html = res.data || '';
+              const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+              const title = titleMatch ? titleMatch[1].trim() : 'Test Post';
+              const content = `Imported from ${t.url}\n\n` + html.substring(0, 1200);
+              const data = Object.assign({ site_base_url: cfg.site_url, content_target: 'post', title, content, status: 'draft' }, buildAuth(cfg));
+              const result = await buddy.processInput(data);
+              if (result.success) {
+                return { message: `🎉 Test post created: ${result.data?.link || ''}\n\nCommands:\n- post \"Your topic\"\n- bulk rss <url> --count 5\n- status`, data: { onboarding_complete: true, next_step: 'complete' } };
+              }
+              return { message: `❌ Test failed: ${result.error}\nPlease correct the data and start again with your site URL.`, data: { onboarding_complete: true, next_step: 'complete' } };
+            }
+            if (t.type === 'questionnaire') {
+              const data = Object.assign({ site_base_url: cfg.site_url, content_target: t.target || 'post', title: t.title || 'Test Post', content: t.content || '', status: t.status || 'draft' }, buildAuth(cfg));
+              const result = await buddy.processInput(data);
+              if (result.success) {
+                return { message: `🎉 Test post created: ${result.data?.link || ''}\n\nCommands:\n- post \"Your topic\"\n- bulk rss <url> --count 5\n- status`, data: { onboarding_complete: true, next_step: 'complete' } };
+              }
+              return { message: `❌ Test failed: ${result.error}\nPlease correct the data and start again with your site URL.`, data: { onboarding_complete: true, next_step: 'complete' } };
+            }
+            if (t.type === 'rss') {
+              const params = { source: 'rss', rss_url: t.rss_url, count: t.count || 1, status: 'draft', link_back: !!t.link_back };
+              const result = await this.contentManager.processBulkPosting(params);
+              if (result.success) {
+                return { message: `🎉 RSS test completed: ${result.data.summary.successful}/${result.data.summary.total} posts.\n\nCommands:\n- bulk rss <url> --count 5\n- post \"Your topic\"\n- status`, data: { onboarding_complete: true, next_step: 'complete' } };
+              }
+              return { message: `❌ RSS test failed: ${result.message || 'Unknown error'}`, data: { onboarding_complete: true, next_step: 'complete' } };
+            }
+            return { message: 'Unknown test type. Finishing setup.', data: { onboarding_complete: true, next_step: 'complete' } };
+          } catch (e) {
+            return { message: `❌ Test execution error: ${e.message}`, data: { onboarding_complete: true, next_step: 'complete' } };
+          }
+        }
         
       default:
         return {
@@ -631,6 +784,7 @@ class OpenClawIntegration {
     try {
       const fs = require('fs').promises;
       const path = require('path');
+      const yaml = require('js-yaml');
       const configPath = path.join(process.cwd(), 'buddyclaw-config.json');
       
       // Create a proper configuration structure
@@ -681,6 +835,31 @@ class OpenClawIntegration {
       
       await fs.writeFile(configPath, JSON.stringify(fullConfig, null, 2));
       console.log('✅ Configuration saved successfully');
+      const yamlConfig = {
+        wordpress: {
+          url: fullConfig.wordpress.siteUrl,
+          login_url: fullConfig.wordpress.siteUrl ? `${fullConfig.wordpress.siteUrl}/wp-login.php` : '',
+          username: fullConfig.wordpress.credentials.username || '',
+          password: fullConfig.wordpress.credentials.password || '',
+          content_target: 'post',
+          status: 'draft',
+          api_token: fullConfig.wordpress.credentials.apiToken || '',
+          auth_method: fullConfig.wordpress.authMethod === 'application_password' ? 'app_password' : fullConfig.wordpress.authMethod
+        },
+        multi_agent: {
+          enabled: fullConfig.wordpress.authMethod === 'multi_agent',
+          email: fullConfig.wordpress.credentials.agentEmail || '',
+          himalaya_configured: fullConfig.wordpress.authMethod === 'multi_agent'
+        },
+        openclaw: {
+          vault_path: path.join(process.cwd(), '.vault'),
+          auto_setup: true,
+          test_connection: true
+        }
+      };
+      const yamlPath = path.join(process.cwd(), 'config.yaml');
+      await fs.writeFile(yamlPath, yaml.dump(yamlConfig, { indent: 2, lineWidth: 120, noRefs: true }), 'utf8');
+      console.log('✅ YAML configuration saved');
       return true;
     } catch (error) {
       console.error('❌ Failed to save configuration:', error);
