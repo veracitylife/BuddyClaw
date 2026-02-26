@@ -1,0 +1,10 @@
+{
+  "site_base_url": "https://disruptarian.com/community",
+  "wp_username": "clovisstar.com@gmail.com",
+  "wp_app_password": "*mQ#&G1{4ff2<",
+  "content_target": "post",
+  "title": "Test Post from BuddyClaw",
+  "content": "<p>This is a test post from the BuddyClaw skill to verify authentication and posting functionality.</p>",
+  "status": "draft",
+  "dry_run": false
+}

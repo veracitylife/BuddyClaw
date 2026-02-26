@@ -1,10 +1,14 @@
 {
   "name": "buddyclaw",
   "version": "0.0.1",
-  "description": "OpenClaw skill for posting to WordPress and BuddyBoss/BuddyPress",
-  "main": "poster.js",
+  "description": "OpenClaw skill for posting to WordPress and BuddyBoss/BuddyPress with multi-agent support and email verification",
+  "main": "enhanced-poster.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test-multi-agent.js",
+    "test-agent": "node agent-manager.js --list",
+    "test-email": "node email-verifier.js --check --email test@example.com",
+    "register-agent": "node agent-manager.js --register",
+    "legacy": "node poster.js"
   },
   "author": "Spun Web Technology",
   "license": "ISC",
@@ -12,5 +16,23 @@
     "axios": "^1.6.0",
     "form-data": "^4.0.0",
     "yargs": "^17.0.0"
-  }
+  },
+  "keywords": [
+    "openclaw",
+    "wordpress",
+    "buddyboss",
+    "buddypress",
+    "rest-api",
+    "multi-agent",
+    "email-verification",
+    "himalaya"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spunweb/buddyclaw"
+  },
+  "bugs": {
+    "url": "https://github.com/spunweb/buddyclaw/issues"
+  },
+  "homepage": "https://github.com/spunweb/buddyclaw#readme"
 }
