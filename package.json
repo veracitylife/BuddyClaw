@@ -4,12 +4,20 @@
   "description": "OpenClaw skill for posting to WordPress and BuddyBoss/BuddyPress with multi-agent support, email verification, and REST API token authentication",
   "main": "enhanced-poster.js",
   "scripts": {
+    "configure": "node chat-onboarding.js",
+    "setup": "node chat-onboarding.js",
     "test": "node test-api-token.js",
     "test-agent": "node agent-manager.js --list",
     "test-email": "node email-verifier.js --check --email test@example.com",
     "register-agent": "node agent-manager.js --register",
     "legacy": "node poster.js",
-    "test-all": "node test-api-token.js && echo 'All tests completed!'"
+    "test-all": "node test-api-token.js && echo 'All tests completed!",
+    "test-connection": "node enhanced-poster.js --test-connection",
+    "test-captcha": "node captcha-solver.js --test",
+    "reset-config": "rm -f config/openclaw.json && echo 'Configuration reset'",
+    "help": "node chat-onboarding.js --help",
+    "test-chat": "node test-chat-integration.js",
+    "test-onboarding": "node chat-onboarding.js --test"
   },
   "author": "Spun Web Technology",
   "license": "ISC",

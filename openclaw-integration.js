@@ -240,21 +240,58 @@ class OpenClawIntegration {
     console.log('🔧 Handling setup command');
     
     try {
-      // Initialize configuration manager
-      await this.configManager.initialize();
+      // Import ChatOnboarding dynamically to avoid circular dependencies
+      const ChatOnboarding = require('./chat-onboarding');
       
       // Check if already configured
-      const validation = this.configManager.validateConfig();
-      if (validation.valid) {
+      const isConfigured = await ChatOnboarding.isOnboardingCompleted();
+      if (isConfigured) {
+        const config = await ChatOnboarding.getConfiguration();
         return {
           message: '✅ BuddyClaw is already configured! Use "status" to see current settings or "config" to modify them.',
-          data: this.configManager.getConfigSummary()
+          data: {
+            siteUrl: config?.wordpress?.siteUrl,
+            authMethod: config?.wordpress?.authMethod,
+            captchaEnabled: config?.captcha?.enabled
+          }
         };
       }
 
+      // Start interactive chat onboarding
+      console.log('🚀 Starting BuddyClaw Interactive Onboarding...');
+      const onboarding = new ChatOnboarding();
+      
+      // Run onboarding in background and return immediate response
+      setImmediate(async () => {
+        try {
+          await onboarding.runOnboarding();
+          console.log('✅ Onboarding completed successfully!');
+        } catch (error) {
+          console.error('❌ Onboarding failed:', error.message);
+        }
+      });
+
       return {
-        message: '📝 BuddyClaw needs configuration. Run the onboarding wizard with: node onboarding.js',
-        data: { needs_setup: true }
+        message: '� Starting BuddyClaw Interactive Onboarding!\n\n' +
+                'I will guide you through the setup process step-by-step.\n' +
+                'Please follow the prompts in your terminal.\n\n' +
+                '📋 What we\'ll configure:\n' +
+                '• WordPress site URL and authentication\n' +
+                '• VAULT credentials (optional)\n' +
+                '• CAPTCHA solving (optional)\n' +
+                '• Content generation preferences\n' +
+                '• Bulk processing settings\n\n' +
+                '💡 You can type "help" during setup for assistance.',
+        data: { 
+          onboarding_started: true,
+          steps: [
+            'Vault credential check',
+            'WordPress authentication setup',
+            'CAPTCHA configuration (optional)',
+            'Content preferences',
+            'Final configuration'
+          ]
+        }
       };
 
     } catch (error) {
