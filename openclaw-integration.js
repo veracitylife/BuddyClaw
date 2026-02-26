@@ -22,6 +22,8 @@ class OpenClawIntegration {
     this.commandHistory = [];
     this.maxHistory = 50;
     this.sessions = new Map(); // Track user sessions for multi-step processes
+    this._sessionsFile = path.join(process.cwd(), '.buddyclaw-sessions.json');
+    this._loadSessionsFromDisk();
   }
 
   /**
@@ -36,8 +38,9 @@ class OpenClawIntegration {
       console.log('Chat Input:', chatInput);
       console.log('Context:', context);
 
-      // Parse chat command
-      const command = this.parseChatCommand(chatInput);
+    // Parse chat command
+    const command = this.parseChatCommand(chatInput);
+    command.context = context;
       console.log('Parsed Command:', command);
 
       // Add to history
@@ -260,7 +263,7 @@ class OpenClawIntegration {
 
       // Get or create session for this user
       const userId = command.context?.userId || 'default';
-      let session = this.sessions.get(userId) || { 
+      let session = this._getSession(userId) || {
         onboardingStep: 'welcome',
         config: {}
       };
@@ -277,21 +280,21 @@ class OpenClawIntegration {
         // Store user's answer in session
         if (response.data?.store_answer) {
           if (response.data?.parsed_prefs) {
-            // Handle parsed preferences
             Object.assign(session.config, response.data.parsed_prefs);
+          } else if (response.data?.store_handler) {
+            response.data.store_handler(session, command.raw.trim());
           } else {
-            // Store raw answer
             session.config[response.data.store_answer] = command.raw.trim();
           }
         }
         
-        this.sessions.set(userId, session);
+        this._setSession(userId, session);
       }
       
       // Clean up completed sessions
       if (response.data?.onboarding_complete) {
         await this.saveOnboardingConfig(session.config);
-        this.sessions.delete(userId);
+        this._deleteSession(userId);
       }
       
       return response;
@@ -396,7 +399,7 @@ class OpenClawIntegration {
         const authChoice = command.raw.trim();
         const authMethods = {
           '1': 'application_password',
-          '2': 'rest_api_token', 
+          '2': 'rest_api_token',
           '3': 'basic_auth',
           '4': 'multi_agent'
         };
@@ -419,15 +422,22 @@ class OpenClawIntegration {
               followUpMsg = '🤖 Multi-Agent Registration selected!\n\n' +
                            'BuddyClaw will automatically create an account.\n' +
                            'CAPTCHA solving will be used if needed.\n\n' +
-                           'Want to enable CAPTCHA solving? (yes/no)';
+                           'Please enter the agent email address:';
               break;
           }
           
           return {
             message: `✅ ${method.replace('_', ' ')} selected!\n\n${followUpMsg}`,
-            data: { 
-              next_step: 'auth_credentials',
-              store_answer: 'auth_method'
+            data: {
+              next_step: method === 'rest_api_token'
+                ? 'auth_token'
+                : method === 'multi_agent'
+                  ? 'agent_email'
+                  : 'auth_username',
+              store_answer: 'auth_method',
+              store_handler: (session, answer) => {
+                session.config.auth_method = method;
+              }
             }
           };
         } else {
@@ -437,19 +447,95 @@ class OpenClawIntegration {
           };
         }
         break;
-        
-      case 'auth_credentials':
-        // This would continue based on the auth method chosen
-        // For now, let's move to CAPTCHA configuration
+      
+      case 'auth_username':
+        if (command.raw.trim()) {
+          return {
+            message: '🔒 Enter your password:\n\n' +
+                     '(For Application Password, enter the application password. For Basic Auth, enter your account password.)',
+            data: {
+              next_step: 'auth_secret',
+              store_answer: 'auth_username',
+              store_handler: (session, answer) => {
+                session.config.auth_credentials = session.config.auth_credentials || {};
+                session.config.auth_credentials.username = answer;
+              }
+            }
+          };
+        }
         return {
-          message: '✅ Authentication configured!\n\n' +
-                  '🤖 Step 3: CAPTCHA Configuration (Optional)\n\n' +
-                  'If you want automatic CAPTCHA solving, enter your 2captcha API key.\n' +
-                  'Otherwise, just reply "skip" or press Enter to continue.',
-          data: { 
-            next_step: 'captcha_config',
-            store_answer: 'auth_credentials'
-          }
+          message: 'Please enter a valid username to continue.',
+          data: { next_step: 'auth_username' }
+        };
+      
+      case 'auth_secret':
+        if (command.raw.trim()) {
+          return {
+            message: '✅ Authentication configured!\n\n' +
+                     '🤖 Step 3: CAPTCHA Configuration (Optional)\n\n' +
+                     'If you want automatic CAPTCHA solving, enter your 2captcha API key.\n' +
+                     'Otherwise, just reply "skip" or press Enter to continue.',
+            data: {
+              next_step: 'captcha_config',
+              store_answer: 'auth_secret',
+              store_handler: (session, answer) => {
+                session.config.auth_credentials = session.config.auth_credentials || {};
+                const method = session.config.auth_method || 'application_password';
+                if (method === 'application_password') {
+                  session.config.auth_credentials.applicationPassword = answer;
+                } else {
+                  session.config.auth_credentials.password = answer;
+                }
+              }
+            }
+          };
+        }
+        return {
+          message: 'Please enter a valid password to continue.',
+          data: { next_step: 'auth_secret' }
+        };
+      
+      case 'auth_token':
+        if (command.raw.trim()) {
+          return {
+            message: '✅ API Token saved!\n\n' +
+                     '🤖 Step 3: CAPTCHA Configuration (Optional)\n\n' +
+                     'If you want automatic CAPTCHA solving, enter your 2captcha API key.\n' +
+                     'Otherwise, just reply "skip" or press Enter to continue.',
+            data: {
+              next_step: 'captcha_config',
+              store_answer: 'auth_token',
+              store_handler: (session, answer) => {
+                session.config.auth_method = 'rest_api_token';
+                session.config.auth_credentials = { apiToken: answer };
+              }
+            }
+          };
+        }
+        return {
+          message: 'Please paste a valid REST API token to continue.',
+          data: { next_step: 'auth_token' }
+        };
+      
+      case 'agent_email':
+        if (command.raw.trim()) {
+          return {
+            message: '🤖 Multi-Agent registration will use this email.\n\n' +
+                     'Would you like to enable CAPTCHA solving? (yes/no)\n' +
+                     'If yes, you can paste your 2captcha API key next.',
+            data: {
+              next_step: 'captcha_config',
+              store_answer: 'agent_email',
+              store_handler: (session, answer) => {
+                session.config.agent_email = answer;
+                session.config.auth_method = 'multi_agent';
+              }
+            }
+          };
+        }
+        return {
+          message: 'Please enter a valid agent email address to continue.',
+          data: { next_step: 'agent_email' }
         };
         
       case 'captcha_config':
@@ -553,7 +639,29 @@ class OpenClawIntegration {
         wordpress: {
           siteUrl: config.site_url || '',
           authMethod: config.auth_method || 'application_password',
-          credentials: config.auth_credentials || {}
+          credentials: (() => {
+            const method = config.auth_method || 'application_password';
+            const creds = config.auth_credentials || {};
+            if (method === 'application_password') {
+              return {
+                username: creds.username || '',
+                applicationPassword: creds.applicationPassword || ''
+              };
+            }
+            if (method === 'basic_auth') {
+              return {
+                username: creds.username || '',
+                password: creds.password || ''
+              };
+            }
+            if (method === 'rest_api_token') {
+              return { apiToken: creds.apiToken || '' };
+            }
+            if (method === 'multi_agent') {
+              return { agentEmail: config.agent_email || '' };
+            }
+            return creds;
+          })()
         },
         captcha: {
           enabled: !!config.captcha_key,
@@ -578,6 +686,42 @@ class OpenClawIntegration {
       console.error('❌ Failed to save configuration:', error);
       throw error;
     }
+  }
+ 
+  _loadSessionsFromDisk() {
+    try {
+      if (fs.existsSync(this._sessionsFile)) {
+        const raw = fs.readFileSync(this._sessionsFile, 'utf8');
+        const json = JSON.parse(raw || '{}');
+        Object.entries(json).forEach(([userId, session]) => {
+          this.sessions.set(userId, session);
+        });
+      }
+    } catch (_) {}
+  }
+ 
+  _saveSessionsToDisk() {
+    try {
+      const obj = {};
+      for (const [k, v] of this.sessions.entries()) {
+        obj[k] = v;
+      }
+      fs.writeFileSync(this._sessionsFile, JSON.stringify(obj, null, 2));
+    } catch (_) {}
+  }
+ 
+  _getSession(userId) {
+    return this.sessions.get(userId);
+  }
+ 
+  _setSession(userId, session) {
+    this.sessions.set(userId, session);
+    this._saveSessionsToDisk();
+  }
+ 
+  _deleteSession(userId) {
+    this.sessions.delete(userId);
+    this._saveSessionsToDisk();
   }
 
   /**

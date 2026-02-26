@@ -253,7 +253,8 @@ class EnhancedBuddyClaw {
       return {
         success: false,
         error: `Registration and publishing failed: ${error.message}`,
-        details: error.response?.data || null
+        details: error.response?.data || null,
+        auth_method: 'multi_agent'
       };
     }
   }

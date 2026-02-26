@@ -1,0 +1,14 @@
+{
+  "test-user-123": {
+    "onboardingStep": "content_prefs",
+    "config": {
+      "site_url": "https://testsite.com",
+      "auth_method": "application_password",
+      "auth_credentials": {
+        "username": "testuser",
+        "applicationPassword": "skip"
+      },
+      "captcha_key": "yes yes yes no"
+    }
+  }
+}
