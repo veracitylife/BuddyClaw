@@ -1,0 +1,32 @@
+BuddyClaw Version 0.0.4
+===================
+
+Release Date: 2026-02-27
+
+Key Features:
+- Interactive Q&A Chat-Based Onboarding
+- Bulk Posting from RSS Feeds, Files, and Text
+- CAPTCHA Solving with 2captcha Integration
+- Autonomous Error Recovery and Self-Healing
+- Multi-Agent WordPress Integration
+- REST API Token Authentication
+- Group/Forum Membership Handling
+- Content Generation with AI-powered Metadata
+
+Interactive Onboarding:
+- Step-by-step Q&A configuration process
+- User session management across multiple interactions
+- Vault credential checking and validation
+- WordPress authentication method selection
+- CAPTCHA configuration options
+- Content preference settings
+
+Files Updated:
+- openclaw-integration.js (Interactive Q&A onboarding)
+- enhanced-poster.js (Version 0.0.4)
+- chat-onboarding.js (Version 0.0.4)
+- group-joiner.js (Fixed ESM compatibility)
+- package.json (Version 0.0.4)
+
+GitHub Repository:
+https://github.com/veracitylife/BuddyClaw

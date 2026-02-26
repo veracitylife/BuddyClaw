@@ -7,7 +7,7 @@ const EmailVerifier = require('./email-verifier');
 
 /**
  * Enhanced BuddyClaw Poster - Multi-Agent WordPress Integration with REST API Token Support
- * Spun Web Technology - Version 0.0.2
+ * Spun Web Technology - Version 0.0.5
  * 
  * NEW: Added REST API token authentication as optional authentication method
  */

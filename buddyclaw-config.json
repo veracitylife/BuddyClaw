@@ -1,0 +1,22 @@
+{
+  "version": "0.0.5",
+  "wordpress": {
+    "siteUrl": "https://testsite.com",
+    "authMethod": "1",
+    "credentials": "testuser"
+  },
+  "captcha": {
+    "enabled": false,
+    "apiKey": ""
+  },
+  "content": {
+    "autoGenerateTitle": true,
+    "autoGenerateExcerpt": true,
+    "autoGenerateTags": true,
+    "autoGenerateFeaturedImage": false
+  },
+  "onboarding": {
+    "completed": true,
+    "completedAt": "2026-02-26T19:10:40.639Z"
+  }
+}

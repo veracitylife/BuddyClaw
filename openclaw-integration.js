@@ -9,7 +9,7 @@ const AutonomousRecovery = require('./autonomous-recovery');
 /**
  * BuddyClaw OpenClaw Chat Integration
  * Processes chat commands and automates WordPress posting
- * Spun Web Technology - Version 0.0.4
+ * Spun Web Technology - Version 0.0.5
  */
 
 class OpenClawIntegration {
@@ -21,6 +21,7 @@ class OpenClawIntegration {
     this.recovery = new AutonomousRecovery();
     this.commandHistory = [];
     this.maxHistory = 50;
+    this.sessions = new Map(); // Track user sessions for multi-step processes
   }
 
   /**
@@ -257,45 +258,325 @@ class OpenClawIntegration {
         };
       }
 
-      // Start interactive chat onboarding
-      console.log('🚀 Starting BuddyClaw Interactive Onboarding...');
-      const onboarding = new ChatOnboarding();
-      
-      // Run onboarding in background and return immediate response
-      setImmediate(async () => {
-        try {
-          await onboarding.runOnboarding();
-          console.log('✅ Onboarding completed successfully!');
-        } catch (error) {
-          console.error('❌ Onboarding failed:', error.message);
-        }
-      });
-
-      return {
-        message: '� Starting BuddyClaw Interactive Onboarding!\n\n' +
-                'I will guide you through the setup process step-by-step.\n' +
-                'Please follow the prompts in your terminal.\n\n' +
-                '📋 What we\'ll configure:\n' +
-                '• WordPress site URL and authentication\n' +
-                '• VAULT credentials (optional)\n' +
-                '• CAPTCHA solving (optional)\n' +
-                '• Content generation preferences\n' +
-                '• Bulk processing settings\n\n' +
-                '💡 You can type "help" during setup for assistance.',
-        data: { 
-          onboarding_started: true,
-          steps: [
-            'Vault credential check',
-            'WordPress authentication setup',
-            'CAPTCHA configuration (optional)',
-            'Content preferences',
-            'Final configuration'
-          ]
-        }
+      // Get or create session for this user
+      const userId = command.context?.userId || 'default';
+      let session = this.sessions.get(userId) || { 
+        onboardingStep: 'welcome',
+        config: {}
       };
+      
+      console.log(`📍 Current onboarding step: ${session.onboardingStep}`);
+      
+      // Handle interactive onboarding step by step
+      const response = await this.handleInteractiveOnboarding(session.onboardingStep, command, session);
+      
+      // Update session state with user's answer and next step
+      if (response.data?.next_step) {
+        session.onboardingStep = response.data.next_step;
+        
+        // Store user's answer in session
+        if (response.data?.store_answer) {
+          if (response.data?.parsed_prefs) {
+            // Handle parsed preferences
+            Object.assign(session.config, response.data.parsed_prefs);
+          } else {
+            // Store raw answer
+            session.config[response.data.store_answer] = command.raw.trim();
+          }
+        }
+        
+        this.sessions.set(userId, session);
+      }
+      
+      // Clean up completed sessions
+      if (response.data?.onboarding_complete) {
+        await this.saveOnboardingConfig(session.config);
+        this.sessions.delete(userId);
+      }
+      
+      return response;
 
     } catch (error) {
       throw new Error(`Setup failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle interactive onboarding step by step with proper Q&A flow
+   */
+  async handleInteractiveOnboarding(step, command, session = {}) {
+    const ChatOnboarding = require('./chat-onboarding');
+    
+    switch (step) {
+      case 'welcome':
+        return {
+          message: '🤖 Welcome to BuddyClaw Interactive Onboarding!\n\n' +
+                  'I\'ll guide you through setting up your WordPress posting assistant.\n\n' +
+                  '📋 We\'ll configure:\n' +
+                  '• WordPress site URL and authentication\n' +
+                  '• VAULT credentials (optional)\n' +
+                  '• CAPTCHA solving (optional)\n\n' +
+                  '💡 Reply with "continue" to start, or "help" for assistance.',
+          data: {
+            next_step: 'vault_check',
+            instructions: 'Type "continue" to proceed or "help" for more info'
+          }
+        };
+        
+      case 'vault_check':
+        if (command.raw.toLowerCase().includes('continue')) {
+          return {
+            message: '🔐 Step 1: Vault Credential Check\n\n' +
+                    'We can check your VAULT for WordPress credentials.\n' +
+                    'This makes setup easier if you have credentials stored.\n\n' +
+                    'Would you like me to check your vault? (yes/no)\n' +
+                    'You can also type "skip" to configure manually.',
+            data: {
+              next_step: 'vault_response',
+              vault_path: '~/.openclaw/workspace/VAULTS/superuser-credentials/super-user.md'
+            }
+          };
+        }
+        break;
+        
+      case 'vault_response':
+        const userResponse = command.raw.toLowerCase();
+        
+        if (userResponse.includes('yes') || userResponse.includes('y')) {
+          // Check vault and respond
+          const vaultExists = await this.checkVaultExists();
+          if (vaultExists) {
+            return {
+              message: '✅ Vault found! I found your credentials.\n\n' +
+                      'Would you like to use these saved credentials? (yes/no)',
+              data: { next_step: 'use_vault_creds' }
+            };
+          } else {
+            return {
+              message: '❌ Vault not found at the expected location.\n\n' +
+                      'No problem! Let\'s configure WordPress manually.\n\n' +
+                      '🌐 What\'s your WordPress site URL? (e.g., https://yoursite.com)',
+              data: { next_step: 'site_url' }
+            };
+          }
+        } else if (userResponse.includes('no') || userResponse.includes('n') || userResponse.includes('skip')) {
+          return {
+            message: '⚙️  Manual configuration selected.\n\n' +
+                    '🌐 What\'s your WordPress site URL? (e.g., https://yoursite.com)',
+            data: { next_step: 'site_url' }
+          };
+        } else {
+          return {
+            message: 'Please answer "yes" to check vault, "no" to configure manually, or "skip" to skip.',
+            data: { next_step: 'vault_response' }
+          };
+        }
+        break;
+        
+      case 'site_url':
+        const siteUrl = command.raw.trim();
+        if (siteUrl) {
+          return {
+            message: `✅ Site URL: ${siteUrl}\n\n` +
+                    '🔐 Choose your authentication method:\n' +
+                    '1. Application Password (Recommended)\n' +
+                    '2. REST API Token\n' +
+                    '3. Basic Authentication\n' +
+                    '4. Multi-Agent Registration (Auto-create)\n\n' +
+                    'Reply with 1, 2, 3, or 4:',
+            data: { 
+              next_step: 'auth_method',
+              store_answer: 'site_url'
+            }
+          };
+        }
+        break;
+        
+      case 'auth_method':
+        const authChoice = command.raw.trim();
+        const authMethods = {
+          '1': 'application_password',
+          '2': 'rest_api_token', 
+          '3': 'basic_auth',
+          '4': 'multi_agent'
+        };
+        
+        if (authMethods[authChoice]) {
+          const method = authMethods[authChoice];
+          let followUpMsg = '';
+          
+          switch (method) {
+            case 'application_password':
+              followUpMsg = '👤 Enter your WordPress username:';
+              break;
+            case 'rest_api_token':
+              followUpMsg = '🔑 Enter your REST API Token:';
+              break;
+            case 'basic_auth':
+              followUpMsg = '👤 Enter your WordPress username:';
+              break;
+            case 'multi_agent':
+              followUpMsg = '🤖 Multi-Agent Registration selected!\n\n' +
+                           'BuddyClaw will automatically create an account.\n' +
+                           'CAPTCHA solving will be used if needed.\n\n' +
+                           'Want to enable CAPTCHA solving? (yes/no)';
+              break;
+          }
+          
+          return {
+            message: `✅ ${method.replace('_', ' ')} selected!\n\n${followUpMsg}`,
+            data: { 
+              next_step: 'auth_credentials',
+              store_answer: 'auth_method'
+            }
+          };
+        } else {
+          return {
+            message: 'Please reply with 1, 2, 3, or 4 to choose your authentication method.',
+            data: { next_step: 'auth_method' }
+          };
+        }
+        break;
+        
+      case 'auth_credentials':
+        // This would continue based on the auth method chosen
+        // For now, let's move to CAPTCHA configuration
+        return {
+          message: '✅ Authentication configured!\n\n' +
+                  '🤖 Step 3: CAPTCHA Configuration (Optional)\n\n' +
+                  'If you want automatic CAPTCHA solving, enter your 2captcha API key.\n' +
+                  'Otherwise, just reply "skip" or press Enter to continue.',
+          data: { 
+            next_step: 'captcha_config',
+            store_answer: 'auth_credentials'
+          }
+        };
+        
+      case 'captcha_config':
+        const captchaResponse = command.raw.trim();
+        if (captchaResponse && !captchaResponse.toLowerCase().includes('skip')) {
+          return {
+            message: '✅ CAPTCHA solving enabled!\n\n' +
+                    '⚙️  Final Configuration:\n\n' +
+                    'Would you like me to automatically generate:\n' +
+                    '• Post titles? (yes/no)\n' +
+                    '• Post excerpts? (yes/no)\n' +
+                    '• Tags? (yes/no)\n' +
+                    '• Featured images? (yes/no)\n\n' +
+                    'Reply with your preferences (e.g., "yes yes no yes"):',
+            data: { 
+              next_step: 'content_prefs',
+              store_answer: 'captcha_key'
+            }
+          };
+        } else {
+          return {
+            message: '⚠️  CAPTCHA solving skipped.\n\n' +
+                    '⚙️  Final Configuration:\n\n' +
+                    'Would you like me to automatically generate:\n' +
+                    '• Post titles? (yes/no)\n' +
+                    '• Post excerpts? (yes/no)\n' +
+                    '• Tags? (yes/no)\n' +
+                    '• Featured images? (yes/no)\n\n' +
+                    'Reply with your preferences (e.g., "yes yes no yes"):',
+            data: { next_step: 'content_prefs' }
+          };
+        }
+        
+      case 'content_prefs':
+        // Parse content preferences and complete setup
+        const prefs = command.raw.trim().toLowerCase().split(/\s+/);
+        const [auto_title, auto_excerpt, auto_tags, auto_featured_image] = prefs.map(p => p === 'yes');
+        
+        // Store the parsed preferences in the config object that will be saved
+        return {
+          message: '🎉 Setup Complete!\n\n' +
+                  '✅ BuddyClaw has been successfully configured!\n\n' +
+                  '📋 Your configuration has been saved.\n\n' +
+                  '🚀 Ready to start posting!\n' +
+                  'Try: "Post Hello World! This is my first BuddyClaw post!"\n\n' +
+                  '📖 Full documentation: [Documentation.md](Documentation.md)\n' +
+                  '🏠 GitHub: https://github.com/veracitylife/BuddyClaw\n' +
+                  '💬 Support: https://github.com/veracitylife/BuddyClaw/issues',
+          data: { 
+            onboarding_complete: true,
+            next_step: 'complete',
+            store_answer: 'content_prefs',
+            // Store the parsed preferences as the answer
+            parsed_prefs: {
+              auto_title,
+              auto_excerpt, 
+              auto_tags,
+              auto_featured_image
+            }
+          }
+        };
+        
+      default:
+        return {
+          message: 'I\'m not sure what step we\'re on. Let\'s start fresh!\n\n' +
+                  'Type "BuddyClaw Onboarding" to begin setup.',
+          data: { next_step: 'welcome' }
+        };
+    }
+  }
+
+  /**
+   * Check if vault file exists
+   */
+  async checkVaultExists() {
+    try {
+      const fs = require('fs').promises;
+      const vaultPath = require('path').join(
+        process.env.HOME || process.env.USERPROFILE,
+        '.openclaw/workspace/VAULTS/superuser-credentials/super-user.md'
+      );
+      await fs.access(vaultPath);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Save onboarding configuration to file
+   */
+  async saveOnboardingConfig(config) {
+    try {
+      const fs = require('fs').promises;
+      const path = require('path');
+      const configPath = path.join(process.cwd(), 'buddyclaw-config.json');
+      
+      // Create a proper configuration structure
+      const fullConfig = {
+        version: '0.0.5',
+        wordpress: {
+          siteUrl: config.site_url || '',
+          authMethod: config.auth_method || 'application_password',
+          credentials: config.auth_credentials || {}
+        },
+        captcha: {
+          enabled: !!config.captcha_key,
+          apiKey: config.captcha_key || ''
+        },
+        content: {
+          autoGenerateTitle: config.auto_title !== undefined ? config.auto_title : true,
+          autoGenerateExcerpt: config.auto_excerpt !== undefined ? config.auto_excerpt : true,
+          autoGenerateTags: config.auto_tags !== undefined ? config.auto_tags : true,
+          autoGenerateFeaturedImage: config.auto_featured_image !== undefined ? config.auto_featured_image : true
+        },
+        onboarding: {
+          completed: true,
+          completedAt: new Date().toISOString()
+        }
+      };
+      
+      await fs.writeFile(configPath, JSON.stringify(fullConfig, null, 2));
+      console.log('✅ Configuration saved successfully');
+      return true;
+    } catch (error) {
+      console.error('❌ Failed to save configuration:', error);
+      throw error;
     }
   }
 

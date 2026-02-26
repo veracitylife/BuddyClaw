@@ -6,7 +6,7 @@ const CaptchaSolver = require('./captcha-solver');
 /**
  * BuddyClaw Group/Forum Joiner
  * Handles BuddyPress and BuddyBoss group membership operations
- * Spun Web Technology - Version 0.0.2
+ * Spun Web Technology - Version 0.0.5
  */
 
 class GroupJoiner {
@@ -481,89 +481,94 @@ module.exports = GroupJoiner;
 
 // CLI functionality for testing
 if (require.main === module) {
-  const joiner = new GroupJoiner();
-  
-  // Handle command line arguments
-  const args = process.argv.slice(2);
-  
-  if (args.includes('--help') || args.includes('-h')) {
-    console.log('BuddyClaw Group/Forum Joiner');
-    console.log('Usage:');
-    console.log('  node group-joiner.js [command] [options]');
-    console.log('');
-    console.log('Commands:');
-    console.log('  join <groupId>                    Join a group');
-    console.log('  leave <groupId>                   Leave a group');
-    console.log('  status <groupId>                  Check membership status');
-    console.log('  list [userId]                     List user groups (default: current user)');
-    console.log('');
-    console.log('Options:');
-    console.log('  --base-url <url>                  WordPress site URL');
-    console.log('  --username <user>                   Username for auth');
-    console.log('  --app-password <pass>              App password for auth');
-    console.log('  --api-token <token>                API token for auth');
-    console.log('  --message <text>                   Membership request message');
-    console.log('');
-    console.log('Examples:');
-    console.log('  node group-joiner.js join buddyboss --base-url https://site.com --username user --app-password pass');
-    console.log('  node group-joiner.js status general-discussion --base-url https://site.com --api-token token');
-    console.log('  node group-joiner.js list --base-url https://site.com --username user --app-password pass');
-    process.exit(0);
-  }
-
-  // Parse command and options
-  const command = args[0];
-  const target = args[1];
-  
-  if (!command || !target) {
-    console.error('❌ Please provide command and target');
-    process.exit(1);
-  }
-
-  const options = {
-    baseUrl: args.find(arg => arg.startsWith('--base-url='))?.split('=')[1] || '',
-    username: args.find(arg => arg.startsWith('--username='))?.split('=')[1] || '',
-    appPassword: args.find(arg => arg.startsWith('--app-password='))?.split('=')[1] || '',
-    apiToken: args.find(arg => arg.startsWith('--api-token='))?.split('=')[1] || '',
-    membershipMessage: args.find(arg => arg.startsWith('--message='))?.split('=')[1] || ''
-  };
-
-  // Set credentials
-  joiner.baseUrl = options.baseUrl;
-  joiner.credentials = {
-    username: options.username,
-    appPassword: options.appPassword,
-    apiToken: options.apiToken
-  };
-
-  // Execute command
-  let result;
-  switch (command) {
-    case 'join':
-      result = await joiner.joinGroup(target, { membershipMessage: options.membershipMessage });
-      break;
-    case 'leave':
-      result = await joiner.leaveGroup(target);
-      break;
-    case 'status':
-      result = await joiner.checkMembershipStatus(target);
-      break;
-    case 'list':
-      result = await joiner.getUserGroups(target === 'list' ? 'me' : target);
-      break;
-    default:
-      console.error('❌ Unknown command:', command);
-      process.exit(1);
-  }
-
-  if (result.success) {
-    console.log('✅ Success:', result.message);
-    if (result.data) {
-      console.log('📊 Data:', JSON.stringify(result.data, null, 2));
+  (async () => {
+    const joiner = new GroupJoiner();
+    
+    // Handle command line arguments
+    const args = process.argv.slice(2);
+    
+    if (args.includes('--help') || args.includes('-h')) {
+      console.log('BuddyClaw Group/Forum Joiner');
+      console.log('Usage:');
+      console.log('  node group-joiner.js [command] [options]');
+      console.log('');
+      console.log('Commands:');
+      console.log('  join <groupId>                    Join a group');
+      console.log('  leave <groupId>                   Leave a group');
+      console.log('  status <groupId>                  Check membership status');
+      console.log('  list [userId]                     List user groups (default: current user)');
+      console.log('');
+      console.log('Options:');
+      console.log('  --base-url <url>                  WordPress site URL');
+      console.log('  --username <user>                   Username for auth');
+      console.log('  --app-password <pass>              App password for auth');
+      console.log('  --api-token <token>                API token for auth');
+      console.log('  --message <text>                   Membership request message');
+      console.log('');
+      console.log('Examples:');
+      console.log('  node group-joiner.js join buddyboss --base-url https://site.com --username user --app-password pass');
+      console.log('  node group-joiner.js status general-discussion --base-url https://site.com --api-token token');
+      console.log('  node group-joiner.js list --base-url https://site.com --username user --app-password pass');
+      process.exit(0);
     }
-    process.exit(0);
-  } else {
-    console.error('❌ Failed:', result.error);
+
+    // Parse command and options
+    const command = args[0];
+    const target = args[1];
+    
+    if (!command || !target) {
+      console.error('❌ Please provide command and target');
+      process.exit(1);
+    }
+
+    const options = {
+      baseUrl: args.find(arg => arg.startsWith('--base-url='))?.split('=')[1] || '',
+      username: args.find(arg => arg.startsWith('--username='))?.split('=')[1] || '',
+      appPassword: args.find(arg => arg.startsWith('--app-password='))?.split('=')[1] || '',
+      apiToken: args.find(arg => arg.startsWith('--api-token='))?.split('=')[1] || '',
+      membershipMessage: args.find(arg => arg.startsWith('--message='))?.split('=')[1] || ''
+    };
+
+    // Set credentials
+    joiner.baseUrl = options.baseUrl;
+    joiner.credentials = {
+      username: options.username,
+      appPassword: options.appPassword,
+      apiToken: options.apiToken
+    };
+
+    // Execute command
+    let result;
+    switch (command) {
+      case 'join':
+        result = await joiner.joinGroup(target, { membershipMessage: options.membershipMessage });
+        break;
+      case 'leave':
+        result = await joiner.leaveGroup(target);
+        break;
+      case 'status':
+        result = await joiner.checkMembershipStatus(target);
+        break;
+      case 'list':
+        result = await joiner.getUserGroups(target === 'list' ? 'me' : target);
+        break;
+      default:
+        console.error('❌ Unknown command:', command);
+        process.exit(1);
+    }
+
+    if (result.success) {
+      console.log('✅ Success:', result.message);
+      if (result.data) {
+        console.log('📊 Data:', JSON.stringify(result.data, null, 2));
+      }
+      process.exit(0);
+    } else {
+      console.error('❌ Failed:', result.error);
+      process.exit(1);
+    }
+  })().catch(error => {
+    console.error('❌ CLI Error:', error.message);
     process.exit(1);
-  }
+  });
 }
