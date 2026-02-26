@@ -1,9 +1,0 @@
-{
-  "agent_email": "test-agent@disruptarian.com",
-  "site_base_url": "https://disruptarian.com/community",
-  "content_target": "post",
-  "title": "Test Post from Multi-Agent System",
-  "content": "<p>This is a test post from the new multi-agent BuddyClaw system with email verification.</p>",
-  "status": "draft",
-  "dry_run": false
-}

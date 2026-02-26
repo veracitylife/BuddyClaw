@@ -1,21 +1,25 @@
 {
   "name": "buddyclaw",
-  "version": "0.0.1",
-  "description": "OpenClaw skill for posting to WordPress and BuddyBoss/BuddyPress with multi-agent support and email verification",
+  "version": "0.0.2",
+  "description": "OpenClaw skill for posting to WordPress and BuddyBoss/BuddyPress with multi-agent support, email verification, and REST API token authentication",
   "main": "enhanced-poster.js",
   "scripts": {
-    "test": "node test-multi-agent.js",
+    "test": "node test-api-token.js",
     "test-agent": "node agent-manager.js --list",
     "test-email": "node email-verifier.js --check --email test@example.com",
     "register-agent": "node agent-manager.js --register",
-    "legacy": "node poster.js"
+    "legacy": "node poster.js",
+    "test-all": "node test-api-token.js && echo 'All tests completed!'"
   },
   "author": "Spun Web Technology",
   "license": "ISC",
   "dependencies": {
     "axios": "^1.6.0",
     "form-data": "^4.0.0",
-    "yargs": "^17.0.0"
+    "yargs": "^17.0.0",
+    "rss-parser": "^3.13.0",
+    "puppeteer": "^21.0.0",
+    "2captcha": "^3.0.0"
   },
   "keywords": [
     "openclaw",
@@ -25,7 +29,10 @@
     "rest-api",
     "multi-agent",
     "email-verification",
-    "himalaya"
+    "himalaya",
+    "api-token",
+    "jwt",
+    "authentication"
   ],
   "repository": {
     "type": "git",

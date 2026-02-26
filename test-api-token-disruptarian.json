@@ -1,0 +1,9 @@
+{
+  "site_base_url": "https://disruptarian.com/community",
+  "wp_api_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL2Rpc3J1cHRhcmlhbi5jb20vY29tbXVuaXR5IiwiaWF0IjoxNzA3ODkzNjAwLCJuYmYiOjE3MDc4OTM2MDAsImV4cCI6MTcwODQ5ODQwMCwiZGF0YSI6eyJ1c2VyIjp7ImlkIjoiMSJ9fX0.signature",
+  "content_target": "post",
+  "title": "Test Post with REST API Token",
+  "content": "<p>This is a test post using REST API token authentication from the enhanced BuddyClaw system.</p>",
+  "status": "draft",
+  "dry_run": false
+}

@@ -1,9 +1,0 @@
-{
-  "site_base_url": "https://example.com",
-  "wp_username": "testuser",
-  "wp_app_password": "testpass",
-  "content_target": "post",
-  "title": "Test Post",
-  "content": "This is a test post",
-  "dry_run": true
-}
