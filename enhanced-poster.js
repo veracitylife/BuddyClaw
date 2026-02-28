@@ -297,8 +297,18 @@ class EnhancedBuddyClaw {
         throw new Error('Missing required site_base_url');
       }
 
-      if (!title || !content) {
-        throw new Error('Missing required content fields (title, content)');
+      // Validate required content by target
+      if (content_target === 'comment') {
+        if (!content) {
+          throw new Error('Missing required content for comment');
+        }
+        if (!data.post_id) {
+          throw new Error('Missing required post_id for comment target');
+        }
+      } else {
+        if (!title || !content) {
+          throw new Error('Missing required content fields (title, content)');
+        }
       }
 
       // Generate appropriate auth header based on method
@@ -371,6 +381,71 @@ class EnhancedBuddyClaw {
             content: `${title}\n\n${finalContent}`,
             component: 'activity',
             type: 'activity_update'
+          };
+          break;
+        
+        case 'forum':
+          {
+            const forumId = data.forum_id || data.forumId || data.forum;
+            if (!forumId) {
+              throw new Error('Missing required forum_id for forum target');
+            }
+            const candidateEndpoints = [
+              `${site_base_url}/wp-json/buddyboss/v1/forums/${encodeURIComponent(String(forumId))}/topics`,
+              `${site_base_url}/wp-json/buddyboss/v1/topics`,
+              `${site_base_url}/wp-json/wp/v2/topics`,
+              `${site_base_url}/wp-json/wp/v2/topic`
+            ];
+            const forumPayload = {
+              title: title,
+              content: finalContent,
+              status: status,
+              forum_id: forumId,
+              forum: forumId
+            };
+            if (data.group_id) forumPayload.group_id = data.group_id;
+            if (data.groupId) forumPayload.group_id = data.groupId;
+            const attempt = async () => {
+              let lastError = null;
+              for (const ep of candidateEndpoints) {
+                try {
+                  const r = await axios.post(ep, forumPayload, {
+                    headers: {
+                      'Authorization': authHeader,
+                      'Content-Type': 'application/json'
+                    }
+                  });
+                  return { endpoint: ep, data: r.data };
+                } catch (e) {
+                  const code = e.response?.status || 0;
+                  if (code === 404 || code === 405) {
+                    lastError = e;
+                    continue;
+                  }
+                  throw e;
+                }
+              }
+              throw new Error(lastError?.message || 'No compatible forum endpoint found');
+            };
+            const forumResult = await attempt();
+            endpoint = forumResult.endpoint;
+            payload = forumPayload;
+            console.log(`Successfully published forum!`);
+            return {
+              success: true,
+              message: `forum published successfully`,
+              data: forumResult.data,
+              auth_method: authMethod,
+              media_uploaded: mediaIds.length
+            };
+          }
+        
+        case 'comment':
+          endpoint = `${site_base_url}/wp-json/wp/v2/comments`;
+          payload = {
+            post: data.post_id,
+            content: finalContent,
+            status: status === 'publish' ? 'approved' : 'hold'
           };
           break;
           

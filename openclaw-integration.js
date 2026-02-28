@@ -9,7 +9,7 @@ const AutonomousRecovery = require('./autonomous-recovery');
 /**
  * BuddyClaw OpenClaw Chat Integration
  * Processes chat commands and automates WordPress posting
- * Spun Web Technology - Version 0.0.5
+ * Spun Web Technology - Version 0.0.7
  */
 
 class OpenClawIntegration {
@@ -73,6 +73,9 @@ class OpenClawIntegration {
         case 'test':
           result = await this.handleTest(command);
           break;
+        case 'browser':
+          result = await this.handleBrowser(command);
+          break;
         default:
           result = await this.handleUnknown(command);
       }
@@ -116,7 +119,8 @@ class OpenClawIntegration {
       status: /^(status|stats|info)/i,
       help: /^(help|commands|\?)/i,
       config: /^(config|settings)/i,
-      test: /^(test|verify|check)/i
+      test: /^(test|verify|check)/i,
+      browser: /^(browser|automation)/i
     };
 
     // Determine command type
@@ -191,12 +195,17 @@ class OpenClawIntegration {
     }
 
     // Extract group/forum IDs
-    const groupMatch = chatInput.match(/--group\s+(\w+)/i);
+    const groupMatch = chatInput.match(/--group\s+([^\s]+)/i);
     if (groupMatch) {
       params.group_id = groupMatch[1];
     }
 
-    const forumMatch = chatInput.match(/--forum\s+(\w+)/i);
+    const forumIdMatch = chatInput.match(/--forum-id\s+(\d+)/i);
+    if (forumIdMatch) {
+      params.forum_id = forumIdMatch[1];
+    }
+
+    const forumMatch = chatInput.match(/--forum\s+([^\s]+)/i);
     if (forumMatch) {
       params.forum_id = forumMatch[1];
     }
@@ -398,8 +407,8 @@ class OpenClawIntegration {
       case 'auth_method':
         const authChoice = command.raw.trim();
         const authMethods = {
-          '1': 'application_password',
-          '2': 'rest_api_token',
+          '1': 'app_password',
+          '2': 'api_token',
           '3': 'basic_auth',
           '4': 'multi_agent'
         };
@@ -409,10 +418,10 @@ class OpenClawIntegration {
           let followUpMsg = '';
           
           switch (method) {
-            case 'application_password':
+            case 'app_password':
               followUpMsg = '👤 Enter your WordPress username:';
               break;
-            case 'rest_api_token':
+            case 'api_token':
               followUpMsg = '🔑 Enter your REST API Token:';
               break;
             case 'basic_auth':
@@ -422,14 +431,14 @@ class OpenClawIntegration {
               followUpMsg = '🤖 Multi-Agent Registration selected!\n\n' +
                            'BuddyClaw will automatically create an account.\n' +
                            'CAPTCHA solving will be used if needed.\n\n' +
-                           'Please enter the agent email address:';
+                           'Enter the agent email address, or type "list" to choose an existing OpenClaw agent:';
               break;
           }
           
           return {
             message: `✅ ${method.replace('_', ' ')} selected!\n\n${followUpMsg}`,
             data: {
-              next_step: method === 'rest_api_token'
+              next_step: method === 'api_token'
                 ? 'auth_token'
                 : method === 'multi_agent'
                   ? 'agent_email'
@@ -480,8 +489,8 @@ class OpenClawIntegration {
               store_answer: 'auth_secret',
               store_handler: (session, answer) => {
                 session.config.auth_credentials = session.config.auth_credentials || {};
-                const method = session.config.auth_method || 'application_password';
-                if (method === 'application_password') {
+                const method = session.config.auth_method || 'app_password';
+                if (method === 'app_password') {
                   session.config.auth_credentials.applicationPassword = answer;
                 } else {
                   session.config.auth_credentials.password = answer;
@@ -506,7 +515,7 @@ class OpenClawIntegration {
               next_step: 'captcha_config',
               store_answer: 'auth_token',
               store_handler: (session, answer) => {
-                session.config.auth_method = 'rest_api_token';
+                session.config.auth_method = 'api_token';
                 session.config.auth_credentials = { apiToken: answer };
               }
             }
@@ -518,6 +527,36 @@ class OpenClawIntegration {
         };
       
       case 'agent_email':
+        if (command.raw.trim().toLowerCase() === 'list') {
+          try {
+            const AgentManager = require('./agent-manager');
+            const manager = new AgentManager();
+            const agents = manager.listAgents() || [];
+            if (!agents.length) {
+              return {
+                message: 'No existing OpenClaw agents found. Please enter an agent email address.',
+                data: { next_step: 'agent_email' }
+              };
+            }
+            let msg = 'Available OpenClaw agents:\n';
+            agents.forEach((a, i) => {
+              msg += `${i + 1}) ${a.email} (${a.agentName})\n`;
+            });
+            msg += '\nReply with the number of the agent to use, or type "new" to enter a different email.';
+            return {
+              message: msg,
+              data: {
+                next_step: 'select_agent_pick',
+                store_handler: (session) => { session.agent_list = agents; }
+              }
+            };
+          } catch (_) {
+            return {
+              message: 'Unable to list agents. Please enter an agent email address.',
+              data: { next_step: 'agent_email' }
+            };
+          }
+        }
         if (command.raw.trim()) {
           return {
             message: '🤖 Multi-Agent registration will use this email.\n\n' +
@@ -537,13 +576,120 @@ class OpenClawIntegration {
           message: 'Please enter a valid agent email address to continue.',
           data: { next_step: 'agent_email' }
         };
+      
+      case 'select_agent_pick':
+        {
+          const ans = command.raw.trim().toLowerCase();
+          if (ans === 'new') {
+            return {
+              message: 'Enter the agent email address to use for registration.',
+              data: { next_step: 'agent_email' }
+            };
+          }
+          const idx = parseInt(ans, 10);
+          const list = Array.isArray(session.agent_list) ? session.agent_list : [];
+          if (!isNaN(idx) && idx >= 1 && idx <= list.length) {
+            const chosen = list[idx - 1];
+            return {
+              message: '🤖 Multi-Agent registration will use the selected agent.\n\n' +
+                       'Would you like to enable CAPTCHA solving? (yes/no)\n' +
+                       'If yes, you can paste your 2captcha API key next.',
+              data: {
+                next_step: 'captcha_config',
+                store_handler: (session) => {
+                  session.config.agent_email = chosen.email;
+                  session.config.auth_method = 'multi_agent';
+                }
+              }
+            };
+          }
+          return { message: 'Please reply with a valid number from the list, or type "new".', data: { next_step: 'select_agent_pick' } };
+        }
         
       case 'captcha_config':
         const captchaResponse = command.raw.trim();
         if (captchaResponse && !captchaResponse.toLowerCase().includes('skip')) {
           return {
             message: '✅ CAPTCHA solving enabled!\n\n' +
-                    '⚙️  Final Configuration:\n\n' +
+                    '🖱️ Browser Automation (OpenClaw Browser Relay)\n' +
+                    'Are you using browser automation on your VPS with Chrome + OpenClaw Browser Relay? (yes/no)',
+            data: { 
+              next_step: 'browser_ask',
+              store_answer: 'captcha_key'
+            }
+          };
+        } else {
+          return {
+            message: '⚠️  CAPTCHA solving skipped.\n\n' +
+                    '🖱️ Browser Automation (OpenClaw Browser Relay)\n' +
+                    'Are you using browser automation on your VPS with Chrome + OpenClaw Browser Relay? (yes/no)',
+            data: { next_step: 'browser_ask' }
+          };
+        }
+        
+      case 'browser_ask':
+        {
+          const ans = command.raw.trim().toLowerCase();
+          if (ans.includes('y')) {
+            return {
+              message: 'Enter the Chrome DevTools URL for the relay (default http://127.0.0.1:9222):',
+              data: { 
+                next_step: 'browser_url',
+                store_handler: (session) => { session.config.browser_enabled = true; }
+              }
+            };
+          }
+          if (ans.includes('n') || ans.includes('skip')) {
+            return {
+              message: '🎨 Content Style:\n\n' +
+                      'Choose a default style for generated content:\n' +
+                      '1) Informative (Professional, educational)\n' +
+                      '2) Conversational (Casual, engaging, personal)\n' +
+                      '3) Professional (Formal, business-oriented)\n\n' +
+                      'Reply with 1, 2, or 3:',
+              data: { next_step: 'content_style', store_handler: (session) => { session.config.browser_enabled = false; } }
+            };
+          }
+          return { message: 'Please answer yes or no.', data: { next_step: 'browser_ask' } };
+        }
+
+      case 'browser_url':
+        {
+          const url = command.raw.trim() || 'http://127.0.0.1:9222';
+          return {
+            message: 'Registration path on your site? (default /register, fallback /wp-login.php?action=register)',
+            data: { 
+              next_step: 'browser_reg_path',
+              store_handler: (session) => { session.config.browser_url = url; }
+            }
+          };
+        }
+
+      case 'browser_reg_path':
+        {
+          const p = command.raw.trim() || '/register';
+          return {
+            message: '🎨 Content Style:\n\n' +
+                    'Choose a default style for generated content:\n' +
+                    '1) Informative (Professional, educational)\n' +
+                    '2) Conversational (Casual, engaging, personal)\n' +
+                    '3) Professional (Formal, business-oriented)\n\n' +
+                    'Reply with 1, 2, or 3:',
+            data: { 
+              next_step: 'content_style',
+              store_handler: (session) => { session.config.registration_path = p; }
+            }
+          };
+        }
+
+      case 'content_style':
+        {
+          const styles = { '1': 'informative', '2': 'conversational', '3': 'professional' };
+          const choice = command.raw.trim();
+          const style = styles[choice] || 'informative';
+          
+          return {
+            message: '⚙️  Final Configuration:\n\n' +
                     'Would you like me to automatically generate:\n' +
                     '• Post titles? (yes/no)\n' +
                     '• Post excerpts? (yes/no)\n' +
@@ -552,23 +698,11 @@ class OpenClawIntegration {
                     'Reply with your preferences (e.g., "yes yes no yes"):',
             data: { 
               next_step: 'content_prefs',
-              store_answer: 'captcha_key'
+              store_handler: (session) => { session.config.content_style = style; }
             }
           };
-        } else {
-          return {
-            message: '⚠️  CAPTCHA solving skipped.\n\n' +
-                    '⚙️  Final Configuration:\n\n' +
-                    'Would you like me to automatically generate:\n' +
-                    '• Post titles? (yes/no)\n' +
-                    '• Post excerpts? (yes/no)\n' +
-                    '• Tags? (yes/no)\n' +
-                    '• Featured images? (yes/no)\n\n' +
-                    'Reply with your preferences (e.g., "yes yes no yes"):',
-            data: { next_step: 'content_prefs' }
-          };
         }
-        
+
       case 'content_prefs':
         const prefs = command.raw.trim().toLowerCase().split(/\s+/);
         const [auto_title, auto_excerpt, auto_tags, auto_featured_image] = prefs.map(p => p === 'yes');
@@ -604,7 +738,7 @@ class OpenClawIntegration {
           const ch = command.raw.trim();
           if (ch === '1') {
             return {
-              message: 'Enter the URL to use for the test post.',
+              message: 'Enter the URL to use for the test.\n\nBuddyClaw will read this page with the AI model and generate new content based on it.',
               data: { next_step: 'test_url', store_handler: (session) => { session.test = { type: 'url' }; } }
             };
           }
@@ -626,11 +760,60 @@ class OpenClawIntegration {
       case 'test_url':
         if (command.raw.trim()) {
           return {
-            message: 'Fetching content and attempting to create a draft post...',
-            data: { next_step: 'test_execute', store_handler: (session, answer) => { session.test.url = answer; } }
+            message: 'What would you like to generate from this URL?\n1) Post\n2) Page\n3) Comment on an existing post\n\nReply with 1, 2, or 3.',
+            data: {
+              next_step: 'test_url_target',
+              store_handler: (session, answer) => { session.test.url = answer; }
+            }
           };
         }
         return { message: 'Please enter a valid URL.', data: { next_step: 'test_url' } };
+      
+      case 'test_url_target':
+        {
+          const ch = command.raw.trim();
+          if (ch === '1') {
+            return {
+              message: 'Include a link back to the original source? (yes/no)',
+              data: { next_step: 'test_url_linkback', store_handler: (session) => { session.test.target = 'post'; } }
+            };
+          }
+          if (ch === '2') {
+            return {
+              message: 'Include a link back to the original source? (yes/no)',
+              data: { next_step: 'test_url_linkback', store_handler: (session) => { session.test.target = 'page'; } }
+            };
+          }
+          if (ch === '3') {
+            return {
+              message: 'Enter the ID of the post you want to comment on.',
+              data: { next_step: 'test_url_comment_post', store_handler: (session) => { session.test.target = 'comment'; } }
+            };
+          }
+          return { message: 'Reply with 1, 2, or 3.', data: { next_step: 'test_url_target' } };
+        }
+      
+      case 'test_url_comment_post':
+        {
+          const id = parseInt(command.raw.trim(), 10);
+          if (!isNaN(id) && id > 0) {
+            return {
+              message: 'Include a link back to the original source? (yes/no)',
+              data: { next_step: 'test_url_linkback', store_handler: (session) => { session.test.post_id = id; } }
+            };
+          }
+          return { message: 'Please enter a valid numeric post ID.', data: { next_step: 'test_url_comment_post' } };
+        }
+      
+      case 'test_url_linkback':
+        {
+          const v = command.raw.trim().toLowerCase();
+          const lb = v.includes('y');
+          return {
+            message: 'Fetching content and attempting to create a draft...',
+            data: { next_step: 'test_execute', store_handler: (session) => { session.test.link_back = lb; } }
+          };
+        }
       
       case 'test_q_title':
         if (command.raw.trim()) {
@@ -663,7 +846,7 @@ class OpenClawIntegration {
       case 'test_q_target':
         {
           const v = command.raw.trim().toLowerCase();
-          const target = ['post', 'page', 'activity'].includes(v) ? v : 'post';
+          const target = ['post', 'page', 'activity', 'comment', 'forum'].includes(v) ? v : 'post';
           return {
             message: 'Attempting to create the test post...',
             data: { next_step: 'test_execute', store_handler: (session) => { session.test.target = target; } }
@@ -706,8 +889,8 @@ class OpenClawIntegration {
             const buddy = new EnhancedBuddyClaw();
             const buildAuth = (cfg) => {
               const m = cfg.auth_method;
-              if (m === 'rest_api_token') return { wp_api_token: cfg.auth_credentials?.apiToken };
-              if (m === 'application_password') return { wp_username: cfg.auth_credentials?.username, wp_app_password: cfg.auth_credentials?.applicationPassword };
+              if (m === 'api_token') return { wp_api_token: cfg.auth_credentials?.apiToken };
+              if (m === 'app_password') return { wp_username: cfg.auth_credentials?.username, wp_app_password: cfg.auth_credentials?.applicationPassword };
               if (m === 'basic_auth') return { wp_username: cfg.auth_credentials?.username, wp_password: cfg.auth_credentials?.password };
               if (m === 'multi_agent') return { agent_email: cfg.agent_email };
               return {};
@@ -721,8 +904,19 @@ class OpenClawIntegration {
               const html = res.data || '';
               const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
               const title = titleMatch ? titleMatch[1].trim() : 'Test Post';
-              const content = `Imported from ${t.url}\n\n` + html.substring(0, 1200);
-              const data = Object.assign({ site_base_url: cfg.site_url, content_target: 'post', title, content, status: 'draft' }, buildAuth(cfg));
+              const content = `Based on ${t.url}\n\n` + html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 1200) + (t.link_back ? `\n\nSource: ${t.url}` : '');
+              const contentTarget = t.target || 'post';
+              const baseData = {
+                site_base_url: cfg.site_url,
+                content_target: contentTarget,
+                title,
+                content,
+                status: 'draft'
+              };
+              if (contentTarget === 'comment' && t.post_id) {
+                baseData.post_id = t.post_id;
+              }
+              const data = Object.assign(baseData, buildAuth(cfg));
               const result = await buddy.processInput(data);
               if (result.success) {
                 return { message: `🎉 Test post created: ${result.data?.link || ''}\n\nCommands:\n- post \"Your topic\"\n- bulk rss <url> --count 5\n- status`, data: { onboarding_complete: true, next_step: 'complete' } };
@@ -789,14 +983,14 @@ class OpenClawIntegration {
       
       // Create a proper configuration structure
       const fullConfig = {
-        version: '0.0.5',
+        version: '0.0.7',
         wordpress: {
           siteUrl: config.site_url || '',
-          authMethod: config.auth_method || 'application_password',
+          authMethod: config.auth_method || 'app_password',
           credentials: (() => {
-            const method = config.auth_method || 'application_password';
+            const method = config.auth_method || 'app_password';
             const creds = config.auth_credentials || {};
-            if (method === 'application_password') {
+            if (method === 'app_password') {
               return {
                 username: creds.username || '',
                 applicationPassword: creds.applicationPassword || ''
@@ -808,7 +1002,7 @@ class OpenClawIntegration {
                 password: creds.password || ''
               };
             }
-            if (method === 'rest_api_token') {
+            if (method === 'api_token') {
               return { apiToken: creds.apiToken || '' };
             }
             if (method === 'multi_agent') {
@@ -817,10 +1011,16 @@ class OpenClawIntegration {
             return creds;
           })()
         },
+        browser_automation: {
+          enabled: !!config.browser_enabled,
+          browserURL: config.browser_url || 'http://127.0.0.1:9222',
+          registration_path: config.registration_path || '/register'
+        },
         captcha: {
           enabled: !!config.captcha_key,
           apiKey: config.captcha_key || ''
         },
+        content_style: config.content_style || 'informative',
         content: {
           autoGenerateTitle: config.auto_title !== undefined ? config.auto_title : true,
           autoGenerateExcerpt: config.auto_excerpt !== undefined ? config.auto_excerpt : true,
@@ -844,7 +1044,13 @@ class OpenClawIntegration {
           content_target: 'post',
           status: 'draft',
           api_token: fullConfig.wordpress.credentials.apiToken || '',
-          auth_method: fullConfig.wordpress.authMethod === 'application_password' ? 'app_password' : fullConfig.wordpress.authMethod
+          auth_method: fullConfig.wordpress.authMethod
+        },
+        content_style: fullConfig.content_style || 'informative',
+        browser_automation: {
+          enabled: fullConfig.browser_automation.enabled,
+          browserURL: fullConfig.browser_automation.browserURL,
+          registration_path: fullConfig.browser_automation.registration_path
         },
         multi_agent: {
           enabled: fullConfig.wordpress.authMethod === 'multi_agent',
@@ -939,8 +1145,9 @@ class OpenClawIntegration {
       }
 
       // Generate options from parameters
+      const config = this.configManager.getConfig();
       const options = {
-        tone: command.params.tone || 'informative',
+        tone: command.params.tone || config.content_style || 'informative',
         length: command.params.length || 'medium',
         status: command.params.status || 'draft',
         generate_image: command.params.generate_image !== false,
@@ -948,6 +1155,26 @@ class OpenClawIntegration {
         group_id: command.params.group_id,
         forum_id: command.params.forum_id
       };
+
+      // Parse post_id for comment targets
+      const postIdMatch = command.raw.match(/--post-id\s+(\d+)/i);
+      if (postIdMatch) {
+        options.post_id = parseInt(postIdMatch[1], 10);
+      }
+
+      if (options.content_target === 'comment' && !options.post_id) {
+        return {
+          message: '❌ Comment target requires a post id. Use: --post-id <number>',
+          data: { example: 'post "Nice article!" --target comment --post-id 123' }
+        };
+      }
+
+      if (options.content_target === 'forum' && !options.forum_id) {
+        return {
+          message: '❌ Forum target requires a forum id. Use: --forum-id <number>',
+          data: { example: 'post "New topic" --target forum --forum-id 123 --status publish' }
+        };
+      }
 
       console.log('🚀 Starting autonomous posting...');
       const result = await this.autonomous.processChatInput(topic, options);
@@ -1035,12 +1262,19 @@ class OpenClawIntegration {
       // Parse bulk parameters
       const params = this.parseBulkParameters(command.raw);
       
+      // Apply default tone from config if not specified
+      const config = this.configManager.getConfig();
+      if (!command.raw.includes('--tone')) {
+        params.tone = config.content_style || 'informative';
+      }
+      
       if (!params.source) {
         return {
           message: '❌ Please specify a content source. Example: "bulk rss https://example.com/feed.xml --count 5 --status draft"',
           data: { 
             examples: [
               'bulk rss https://techcrunch.com/feed/ --count 3 --status publish',
+              'bulk url https://example.com/article --status draft',
               'bulk file ./articles.json --status draft',
               'bulk text "AI trends\nClimate change\nRemote work" --count 3 --status publish'
             ]
@@ -1157,10 +1391,11 @@ class OpenClawIntegration {
       params.source = sourceMatch[1].toLowerCase();
     }
 
-    // Extract RSS URL
-    const rssMatch = chatInput.match(/--rss-url\s+(\S+)/i);
-    if (rssMatch) {
-      params.rss_url = rssMatch[1];
+    // Extract URL (shared for rss and url sources)
+    const urlMatch = chatInput.match(/--(?:rss-)?url\s+(\S+)/i) || chatInput.match(/bulk\s+(?:rss|url)\s+(\S+)/i);
+    if (urlMatch) {
+      params.rss_url = urlMatch[1]; // We use rss_url field for generic URL too
+      params.url = urlMatch[1];
     }
 
     // Extract file path
@@ -1268,9 +1503,24 @@ class OpenClawIntegration {
             example: 'post artificial intelligence --tone professional --status publish'
           },
           {
+            command: 'post [comment]',
+            description: 'Create a comment on a specific post',
+            example: 'post "Nice article!" --target comment --post-id 123 --status publish'
+          },
+          {
+            command: 'post [forum topic]',
+            description: 'Create a BuddyBoss forum topic in a specific forum',
+            example: 'post "New discussion topic" --target forum --forum-id 123 --status publish'
+          },
+          {
             command: 'bulk [source]',
-            description: 'Bulk post from RSS, file, or text sources',
+            description: 'Bulk post from RSS, URL, file, or text sources',
             example: 'bulk rss https://techcrunch.com/feed/ --count 5 --status draft'
+          },
+          {
+            command: 'browser register',
+            description: 'Register a new WordPress user via Chrome automation',
+            example: 'browser register --username user --email user@example.com --password "P@ssw0rd"'
           },
           {
             command: 'join [group]',
@@ -1315,6 +1565,19 @@ class OpenClawIntegration {
             default: 'draft'
           },
           {
+            parameter: '--target [post|page|activity|comment|forum]',
+            description: 'Content target for single posts/comments',
+            default: 'post'
+          },
+          {
+            parameter: '--post-id <number>',
+            description: 'Required when --target comment; the post ID to comment on'
+          },
+          {
+            parameter: '--forum-id <number>',
+            description: 'Required when --target forum; the forum ID or slug'
+          },
+          {
             parameter: '--source [rss|file|text]',
             description: 'Content source for bulk posting',
             default: 'text'
@@ -1338,21 +1601,92 @@ class OpenClawIntegration {
           },
           {
             parameter: '--forum <name>',
-            description: 'BuddyPress forum for posting'
+            description: 'BuddyBoss forum ID or slug for posting'
           }
         ],
         bulk_examples: [
           'bulk rss https://techcrunch.com/feed/ --count 3 --status publish',
+          'bulk url https://example.com/article --status draft',
           'bulk file ./articles.json --status draft',
           'bulk text "AI trends\nClimate change\nRemote work" --count 3 --status publish --tone professional'
         ],
         posting_examples: [
           'post artificial intelligence --tone professional --status publish',
           'post climate change --group buddyboss --status draft',
-          'write about remote work --forum general-discussion --status publish'
+          'post "New topic" --target forum --forum-id 123 --status publish',
+          'post "Great insights!" --target comment --post-id 456 --status publish',
+          'post "Build a landing page" --target page --status draft'
         ]
       }
     };
+  }
+
+  /**
+   * Handle browser automation commands
+   */
+  async handleBrowser(command) {
+    try {
+      await this.configManager.initialize();
+      const cfg = this.configManager.getBrowserAutomation();
+      if (!cfg.enabled) {
+        return {
+          message: '⚠️ Browser automation is not enabled in config. Run setup to enable it.',
+          data: { enabled: false }
+        };
+      }
+
+      const raw = command.raw;
+      if (/register/i.test(raw)) {
+        const u = (raw.match(/--username\s+(\S+)/i) || [])[1];
+        const e = (raw.match(/--email\s+(\S+)/i) || [])[1];
+        const p = (raw.match(/--password\s+["']([^"']+)["']|--password\s+(\S+)/i) || []).slice(1).find(Boolean);
+
+        await this.configManager.initialize();
+        const wp = this.configManager.getWordPressCredentials();
+        const siteUrl = wp.url;
+
+        if (!u || !e || !p) {
+          return {
+            message: '❌ Missing --username, --email, or --password.\nExample: browser register --username newuser --email new@site.com --password "P@ssw0rd!"',
+            data: null
+          };
+        }
+
+        const BrowserAutomation = require('./browser-automation');
+        
+        // Smart connection handling: if browserURL looks like a websocket, use cdp_ws
+        let browserURL = cfg.browserURL;
+        let cdp_ws = cfg.cdp_ws;
+        
+        if (browserURL && (browserURL.startsWith('ws://') || browserURL.startsWith('wss://'))) {
+          cdp_ws = browserURL;
+          browserURL = null;
+        }
+
+        const ba = new BrowserAutomation({
+          browserURL: browserURL,
+          cdp_ws: cdp_ws,
+          registration_path: cfg.registration_path,
+          captchaApiKey: (await this.configManager.initialize(), this.configManager.config?.captcha?.apiKey)
+        });
+        const result = await ba.registerUser({ siteUrl, username: u, email: e, password: p });
+
+        if (result.success) {
+          return {
+            message: `🎉 Browser-based registration submitted for ${e}. ${result.emailVerification?.success ? 'Email verified.' : 'Check email if not auto-verified.'}`,
+            data: result
+          };
+        }
+        return { message: `❌ Browser registration failed: ${result.error}`, data: result };
+      }
+
+      return {
+        message: 'Browser automation commands:\n- browser register --username <u> --email <e> --password <p>',
+        data: { supported: ['register'] }
+      };
+    } catch (error) {
+      return { message: `❌ Browser automation error: ${error.message}`, data: null };
+    }
   }
 
   /**

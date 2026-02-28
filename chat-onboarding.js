@@ -1,6 +1,6 @@
 /**
  * BuddyClaw Interactive Chat-Based Onboarding System
- * Version: 0.0.5
+ * Version: 0.0.7
  * 
  * This module provides a conversational onboarding experience for BuddyClaw,
  * guiding users through configuration step-by-step with validation and
@@ -14,7 +14,7 @@ const { promisify } = require('util');
 
 class ChatOnboarding {
     constructor() {
-        this.version = '0.0.5';
+        this.version = '0.0.7';
         this.config = {};
         this.vaultPath = '~/.openclaw/workspace/VAULTS/superuser-credentials/super-user.md';
         this.expandedVaultPath = this.expandVaultPath();

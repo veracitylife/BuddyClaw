@@ -51,6 +51,13 @@ class ConfigManager {
         api_token: '',
         auth_method: 'app_password'
       },
+      content_style: 'informative',
+      browser_automation: {
+        enabled: false,
+        browserURL: 'http://127.0.0.1:9222',
+        registration_path: '/register',
+        cdp_ws: ''
+      },
       multi_agent: {
         enabled: false,
         email: '',
@@ -116,6 +123,10 @@ class ConfigManager {
       config.wordpress.status = onboardingData.status;
     }
 
+    if (onboardingData.content_style) {
+      config.content_style = onboardingData.content_style;
+    }
+
     // Update authentication method
     config.wordpress.auth_method = onboardingData.auth_method || 'app_password';
 
@@ -158,8 +169,46 @@ class ConfigManager {
         break;
     }
 
+    // Browser automation settings
+    if (typeof onboardingData.browser_enabled === 'boolean') {
+      config.browser_automation.enabled = onboardingData.browser_enabled;
+    }
+    if (onboardingData.browser_url) {
+      config.browser_automation.browserURL = onboardingData.browser_url;
+    }
+    if (onboardingData.cdp_ws) {
+      config.browser_automation.cdp_ws = onboardingData.cdp_ws;
+    }
+    if (onboardingData.registration_path) {
+      config.browser_automation.registration_path = onboardingData.registration_path;
+    }
+
     this.config = config;
     return this.saveConfig();
+  }
+
+  /**
+   * Get flattened config for convenience
+   */
+  getConfig() {
+    if (!this.config) {
+      throw new Error('Configuration not initialized');
+    }
+    const wp = this.config.wordpress || {};
+    const browser = this.config.browser_automation || {};
+    return {
+      url: wp.url || '',
+      login_url: wp.login_url || '',
+      auth_method: wp.auth_method || 'app_password',
+      content_target: wp.content_target || 'post',
+      status: wp.status || 'draft',
+      content_style: this.config.content_style || (this.config.content && this.config.content.style) || 'informative',
+      browser_enabled: !!browser.enabled,
+      browser_url: browser.browserURL || '',
+      registration_path: browser.registration_path || '/register',
+      cdp_ws: browser.cdp_ws || '',
+      multi_agent_email: (this.config.multi_agent && this.config.multi_agent.email) || ''
+    };
   }
 
   /**
@@ -369,7 +418,12 @@ class ConfigManager {
       url: wpConfig.url,
       auth_method: wpConfig.auth_method,
       content_target: wpConfig.content_target,
-      status: wpConfig.status
+      status: wpConfig.status,
+      browser_automation: {
+        enabled: !!this.config.browser_automation?.enabled,
+        browserURL: this.config.browser_automation?.browserURL || 'N/A',
+        registration_path: this.config.browser_automation?.registration_path || 'N/A'
+      }
     };
 
     // Add masked credentials info
@@ -398,6 +452,16 @@ class ConfigManager {
     }
 
     return summary;
+  }
+
+  /**
+   * Get browser automation configuration
+   */
+  getBrowserAutomation() {
+    if (!this.config) {
+      throw new Error('Configuration not initialized');
+    }
+    return this.config.browser_automation || this.createDefaultConfig().browser_automation;
   }
 
   /**

@@ -6,7 +6,7 @@ metadata: {"openclaw":{"requires":{"bins":["node"],"env":["WP_USERNAME","WP_APP_
 
 # BuddyClaw - WordPress & BuddyBoss Publishing with Multi-Agent Support & Advanced Features
 
-**Spun Web Technology** | Version 0.0.3
+**Spun Web Technology** | Version 0.0.7
 
 This skill enables OpenClaw to publish content directly to WordPress sites, BuddyBoss communities, and BuddyPress networks through their REST APIs. **NEW**: Now supports bulk posting from multiple sources (RSS feeds, files, text), CAPTCHA solving for registration/login, autonomous error correction with self-healing capabilities, and automatic group joining for forum participation.
 

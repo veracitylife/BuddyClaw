@@ -8,8 +8,12 @@ const path = require('path');
  */
 
 class EmailVerifier {
-  constructor(configPath = '~/.config/himalaya/config.toml') {
+  constructor(options = '~/.config/himalaya/config.toml') {
+    const configPath =
+      typeof options === 'string' ? options : (options.configPath || '~/.config/himalaya/config.toml');
     this.configPath = configPath.replace('~', process.env.HOME || process.env.USERPROFILE);
+    this.account = typeof options === 'object' && options.account ? String(options.account) : '';
+    this.folder = typeof options === 'object' && options.folder ? String(options.folder) : 'INBOX';
     this.defaultWaitTime = 30000; // 30 seconds
     this.checkInterval = 5000; // 5 seconds
   }
@@ -56,124 +60,189 @@ class EmailVerifier {
     };
   }
 
-  async searchForEmail(email, subjectKeyword) {
-    return new Promise((resolve, reject) => {
-      // Search for emails with the subject keyword
-      const searchProcess = spawn('himalaya', [
-        'search',
-        '--to', email,
-        '--subject', subjectKeyword,
-        '--format', 'json',
-        '--limit', '10'
-      ]);
+  getGlobalArgs() {
+    const args = ['--config', this.configPath];
+    if (this.account) args.push('--account', this.account);
+    return args;
+  }
 
+  runHimalaya(args, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      const p = spawn('himalaya', args);
       let stdout = '';
       let stderr = '';
 
-      searchProcess.stdout.on('data', (data) => {
+      const timeout = setTimeout(() => {
+        try {
+          p.kill();
+        } catch (_) {}
+        reject(new Error('Himalaya command timed out'));
+      }, timeoutMs);
+
+      p.stdout.on('data', (data) => {
         stdout += data.toString();
       });
 
-      searchProcess.stderr.on('data', (data) => {
+      p.stderr.on('data', (data) => {
         stderr += data.toString();
       });
 
-      searchProcess.on('close', (code) => {
-        if (code !== 0) {
-          reject(new Error(`Himalaya search failed: ${stderr}`));
-          return;
-        }
-
-        try {
-          const results = JSON.parse(stdout);
-          
-          if (results && results.length > 0) {
-            // Get the most recent email
-            const latestEmail = results[0];
-            
-            // Fetch the full email content
-            this.getEmailContent(latestEmail.id).then(emailContent => {
-              const verificationLink = this.extractVerificationLink(emailContent);
-              
-              resolve({
-                found: true,
-                email: latestEmail,
-                verificationLink: verificationLink,
-                subject: latestEmail.subject
-              });
-            }).catch(reject);
-            
-          } else {
-            resolve({ found: false });
-          }
-          
-        } catch (error) {
-          reject(new Error(`Failed to parse Himalaya output: ${error.message}`));
-        }
-      });
-
-      searchProcess.on('error', (error) => {
+      p.on('error', (error) => {
+        clearTimeout(timeout);
         reject(new Error(`Failed to spawn Himalaya: ${error.message}`));
       });
 
-      // Timeout after 10 seconds
-      setTimeout(() => {
-        searchProcess.kill();
-        reject(new Error('Himalaya search timed out'));
-      }, 10000);
+      p.on('close', (code) => {
+        clearTimeout(timeout);
+        if (code !== 0) {
+          reject(new Error(stderr || stdout || `Himalaya exited with code ${code}`));
+          return;
+        }
+        resolve(stdout);
+      });
     });
+  }
+
+  async runHimalayaJson(args, timeoutMs) {
+    const stdout = await this.runHimalaya(args, timeoutMs);
+    return JSON.parse(stdout);
+  }
+
+  normalizeEnvelopeResults(results) {
+    const list = Array.isArray(results)
+      ? results
+      : (results?.data || results?.envelopes || results?.items || []);
+    return Array.isArray(list) ? list : [];
+  }
+
+  async searchForEmail(email, subjectKeyword) {
+    const query = `to:${email} subject:${subjectKeyword}`;
+    const globalArgs = this.getGlobalArgs();
+
+    let envelopes;
+    try {
+      const results = await this.runHimalayaJson(
+        [
+          ...globalArgs,
+          'envelope',
+          'list',
+          '--output',
+          'json',
+          '--folder',
+          this.folder,
+          '--query',
+          query
+        ],
+        10000
+      );
+      envelopes = this.normalizeEnvelopeResults(results);
+    } catch (_) {
+      const results = await this.runHimalayaJson(
+        [
+          ...globalArgs,
+          'search',
+          '--to',
+          email,
+          '--subject',
+          subjectKeyword,
+          '--format',
+          'json',
+          '--limit',
+          '10'
+        ],
+        10000
+      );
+      envelopes = this.normalizeEnvelopeResults(results);
+    }
+
+    if (!envelopes.length) return { found: false };
+
+    const latestEmail = envelopes[0];
+    const emailId = latestEmail.id || latestEmail.message_id || latestEmail.messageId;
+    const emailContent = await this.getEmailContent(emailId);
+    const verificationLink = this.extractVerificationLink(emailContent);
+
+    return {
+      found: true,
+      email: latestEmail,
+      verificationLink: verificationLink,
+      subject: latestEmail.subject
+    };
   }
 
   async getEmailContent(emailId) {
-    return new Promise((resolve, reject) => {
-      const readProcess = spawn('himalaya', [
-        'read',
-        emailId.toString(),
-        '--format', 'json'
-      ]);
+    const globalArgs = this.getGlobalArgs();
+    try {
+      return await this.runHimalayaJson(
+        [
+          ...globalArgs,
+          'message',
+          'read',
+          emailId.toString(),
+          '--output',
+          'json'
+        ],
+        5000
+      );
+    } catch (_) {
+      return await this.runHimalayaJson(
+        [
+          ...globalArgs,
+          'read',
+          emailId.toString(),
+          '--format',
+          'json'
+        ],
+        5000
+      );
+    }
+  }
 
-      let stdout = '';
-      let stderr = '';
+  extractBodyText(emailContent) {
+    if (!emailContent) return '';
+    if (typeof emailContent === 'string') return emailContent;
 
-      readProcess.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
+    const candidates = [
+      emailContent.body,
+      emailContent.text,
+      emailContent.plain,
+      emailContent.content,
+      emailContent.raw
+    ];
 
-      readProcess.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
+    for (const c of candidates) {
+      if (!c) continue;
+      if (typeof c === 'string') return c;
+      if (Array.isArray(c)) {
+        return c
+          .map((p) => {
+            if (!p) return '';
+            if (typeof p === 'string') return p;
+            if (typeof p.text === 'string') return p.text;
+            if (typeof p.plain === 'string') return p.plain;
+            if (typeof p.raw === 'string') return p.raw;
+            return JSON.stringify(p);
+          })
+          .join('\n');
+      }
+      if (typeof c === 'object') {
+        if (typeof c.text === 'string') return c.text;
+        if (typeof c.plain === 'string') return c.plain;
+        if (typeof c.raw === 'string') return c.raw;
+        return JSON.stringify(c);
+      }
+    }
 
-      readProcess.on('close', (code) => {
-        if (code !== 0) {
-          reject(new Error(`Himalaya read failed: ${stderr}`));
-          return;
-        }
-
-        try {
-          const emailData = JSON.parse(stdout);
-          resolve(emailData);
-        } catch (error) {
-          reject(new Error(`Failed to parse email content: ${error.message}`));
-        }
-      });
-
-      readProcess.on('error', (error) => {
-        reject(new Error(`Failed to spawn Himalaya read: ${error.message}`));
-      });
-
-      setTimeout(() => {
-        readProcess.kill();
-        reject(new Error('Himalaya read timed out'));
-      }, 5000);
-    });
+    try {
+      return JSON.stringify(emailContent);
+    } catch (_) {
+      return String(emailContent);
+    }
   }
 
   extractVerificationLink(emailContent) {
-    if (!emailContent || !emailContent.body) {
-      return null;
-    }
-
-    const body = emailContent.body;
+    const body = this.extractBodyText(emailContent);
+    if (!body) return null;
     
     // Common WordPress verification link patterns
     const patterns = [

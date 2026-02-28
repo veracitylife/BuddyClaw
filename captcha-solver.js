@@ -1,4 +1,5 @@
 const axios = require('axios');
+const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
 
@@ -233,7 +234,7 @@ class CaptchaSolver {
           const hcaptchaMatch = pageContent.match(/data-sitekey=["']([^"']+)["']/);
           return {
             sitekey: hcaptchaMatch ? hcaptchaMatch[1] : null,
-            pageurl: window.location.href
+            pageurl: null
           };
         
         default:

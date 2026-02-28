@@ -1,4 +1,4 @@
-BuddyClaw Version 0.0.4
+BuddyClaw Version 0.0.7
 ===================
 
 Release Date: 2026-02-27
@@ -23,10 +23,10 @@ Interactive Onboarding:
 
 Files Updated:
 - openclaw-integration.js (Interactive Q&A onboarding)
-- enhanced-poster.js (Version 0.0.4)
-- chat-onboarding.js (Version 0.0.4)
+- enhanced-poster.js (Version 0.0.7)
+- chat-onboarding.js (Version 0.0.7)
 - group-joiner.js (Fixed ESM compatibility)
-- package.json (Version 0.0.4)
+- package.json (Version 0.0.7)
 
 GitHub Repository:
 https://github.com/veracitylife/BuddyClaw

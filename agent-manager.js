@@ -112,14 +112,10 @@ class AgentManager {
         // This is a simplified version - real implementation would need more security measures
       };
 
-      console.log(`Attempting registration with data:`, registrationData);
-
       try {
         // Try direct registration (if enabled on WordPress)
-        const response = await axios.post(registrationData, {
-          headers: {
-            'Content-Type': 'application/json'
-          }
+        const response = await axios.post(registrationEndpoint, registrationData, {
+          headers: { 'Content-Type': 'application/json' }
         });
 
         console.log('WordPress registration response:', response.data);
@@ -144,7 +140,9 @@ class AgentManager {
         console.error('WordPress registration failed:', wpError.response?.data || wpError.message);
         
         // Check if it's because registration is disabled or user exists
-        if (wpError.response?.status === 403) {
+        if (wpError.response?.status === 404 || wpError.response?.status === 405) {
+          throw new Error('Registration REST endpoint not available on this site');
+        } else if (wpError.response?.status === 403) {
           throw new Error('Registration is disabled on this WordPress site');
         } else if (wpError.response?.status === 400) {
           throw new Error(`Registration failed: ${wpError.response.data.message}`);

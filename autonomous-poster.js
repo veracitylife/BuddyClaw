@@ -284,6 +284,20 @@ class AutonomousBuddyClaw {
       meta: content.meta
     };
 
+    // Allow comment target to carry post_id
+    if (options.content_target === 'comment' && options.post_id) {
+      postData.post_id = options.post_id;
+      // Comments don't require title; ensure minimal data
+      if (!postData.title) {
+        postData.title = 'Comment';
+      }
+    }
+
+    if (options.content_target === 'forum') {
+      if (options.forum_id) postData.forum_id = options.forum_id;
+      if (options.group_id) postData.group_id = options.group_id;
+    }
+
     // Add authentication based on configured method
     switch (credentials.auth_method) {
       case 'api_token':

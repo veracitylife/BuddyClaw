@@ -7,7 +7,7 @@ const AutonomousBuddyClaw = require('./autonomous-poster');
 /**
  * BuddyClaw Content Source Manager
  * Handles RSS feeds, file inputs, and bulk posting operations
- * Spun Web Technology - Version 0.0.4
+ * Spun Web Technology - Version 0.0.7
  */
 
 class ContentSourceManager {
@@ -22,7 +22,8 @@ class ContentSourceManager {
       sources: {
         rss: 0,
         file: 0,
-        text: 0
+        text: 0,
+        url: 0
       }
     };
   }
@@ -43,6 +44,9 @@ class ContentSourceManager {
       switch (options.source) {
         case 'rss':
           contentItems = await this.processRSSFeed(options.rss_url, options);
+          break;
+        case 'url':
+          contentItems = await this.processUrlInput(options.url || options.rss_url, options);
           break;
         case 'file':
           contentItems = await this.processFileInput(options.file_path, options);
@@ -139,6 +143,57 @@ class ContentSourceManager {
 
     } catch (error) {
       throw new Error(`RSS feed processing failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Process URL input content
+   */
+  async processUrlInput(url, options = {}) {
+    try {
+      if (!url) {
+        throw new Error('URL is required for URL source');
+      }
+
+      console.log(`🌐 Fetching content from URL: ${url}`);
+      const response = await axios.get(url, {
+        headers: {
+          'User-Agent': 'BuddyClaw/0.0.7 (Content Discovery)'
+        },
+        timeout: 15000
+      });
+      
+      const html = response.data;
+      
+      // Extract title
+      const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+      const title = titleMatch ? titleMatch[1].trim() : 'Extracted Content';
+      
+      // Extract body content (simple extraction)
+      // Remove scripts, styles, and comments
+      let cleanHtml = html
+        .replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gim, '')
+        .replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gim, '')
+        .replace(/<!--[\s\S]*?-->/g, '');
+        
+      // Extract main content if possible (heuristic)
+      // Look for article, main, or div with content/post class
+      // For now, we'll strip tags and take the first chunk of meaningful text
+      const text = cleanHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      
+      // Limit to reasonable length for context
+      const content = text.substring(0, 3000);
+      
+      return [{
+        topic: title,
+        content: `Based on content from ${url}:\n\n${content}`,
+        title: title,
+        source: 'url',
+        link: url
+      }];
+
+    } catch (error) {
+      throw new Error(`URL processing failed: ${error.message}`);
     }
   }
 
